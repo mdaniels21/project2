@@ -239,15 +239,6 @@ k618="and children between 6 and 18"
 
 print(r.k5,k618)
 
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-import pandas as pd
-
-df = sns.load_dataset('womenslfp')
-
-(df.filter(['k5', 'k618'])
- .query('k5 == 3').head(3))
 ```
 
 I used the reticulate function to define the k5 and k618 variables in the data set to communicate between R and Python. I then uploaded my data set into python and used basic filtering in python to pull households that have 3 children under 5 from a filtered set with only the k5 and k618 variables.
