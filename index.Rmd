@@ -46,92 +46,215 @@ class_diag <- function(score, truth, positive, cutoff=.5){
 
 # Mining, Classification, Prediction
 
-## Name and EID here
+## Morgan Daniels mcd2925
 
 ### Introduction 
 
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc. See instructions for more information
+I chose a data set that include data on 753 families. The data is based around whether the woman of the household participates in the labor force (has a job). It includes variables counting how many children in the household are under 5, how many children are between 6 and 18, whether the wife attended college, whether the husband attended college, the log wage of the women's earnings (adjusted if she does not have a job), and then the household income without the wife's earnings.
+
+This data set met the requirements for the project and intrigued me as to what results I could find about the relationship between number of children of certain age, log of wages and even college education on a woman's choice to participate in the labor force. As an economics major I have spent a lot of course load focused on labor economics and gender and equality economics and this data set really brought together my interests. I am excited to experiment with this set for this project!
 
 ```{R}
 library(tidyverse)
-# read your datasets in here, e.g., with read_csv()
+womenslfp <- read_csv("~/project2/us womens labor force.csv")
 
-# if your dataset needs tidying, do so here
+head(womenslfp)
 
-# any other code here
+
 ```
 
 ### Cluster Analysis
 
 ```{R}
 library(cluster)
-# clustering code here
+pamdata <- womenslfp %>% select(age, lwg, inc)
+pam1 <- pamdata %>% pam(k=3)
+pam1
+pamclust <- pamdata %>% mutate(cluster=as.factor(pam1$clustering))
+pamclust %>% ggplot(aes(age, lwg, color=cluster, size=inc)) + geom_point()
+pamclust %>% ggplot(aes(age, inc, color=cluster)) + geom_point()
+pamclust %>% ggplot(aes(inc, lwg, color=cluster)) + geom_point()
+
+sil_width <- vector()
+for (i in 2:10){
+  pam_fit <- pam(pamdata, k=i)
+  sil_width[i] <- pam_fit$silinfo$avg.width
+}
+ggplot() + geom_line(aes(x=1:10, y=sil_width)) + scale_x_continuous(name="k", breaks=1:10)
 ```
 
-Discussion of clustering here
+I chose to cluster the age, log wage of the woman's income, and the family income without the woman's included because those three categories seem to related and that they could be a could fit for clustering. The goodness-of-fit test I ran showed that these variables had relatively low average silhouette width and probably create a weak structure. The graphs of the pairwise clustering show that the third cluster creates issues in all categories. The clustering has split the data into two clusters by age (approximately above 41 and below 41) and then created a third group of all high income households. These cluster do not mesh together well and show some issues with using PAM clustering on this data set. 
     
     
 ### Dimensionality Reduction with PCA
 
 ```{R}
-# PCA code here
+womenslfp_dat <- womenslfp %>% select_if(is.numeric) %>% scale
+womenslfp_pca <- princomp(womenslfp_dat)
+names(womenslfp_pca)
+summary(womenslfp_pca, loadings=T)
+
+eigval<-womenslfp_pca$sdev^2 
+varprop=round(eigval/sum(eigval), 2) 
+
+ggplot() + geom_bar(aes(y=varprop, x=1:6), stat="identity") + xlab("") + geom_path(aes(y=varprop, x=1:6))+ 
+geom_text(aes(x=1:6, y=varprop, label=round(varprop, 2)), vjust=1, col="white", size=5) +
+scale_y_continuous(breaks=seq(0, .6, .2), labels = scales::percent) +
+scale_x_continuous(breaks=1:10)
+
+Name <- rownames(womenslfp)
+womenslfp_pca$scores %>% as.data.frame %>% cbind(Name, .) %>% top_n(3, Comp.1) %>%
+select(Name:Comp.6)
+womenslfp_pca$scores %>% as.data.frame %>% cbind(Name, .) %>% top_n(3, wt=desc(Comp.1)) %>%
+select(Name:Comp.6)
+
+womenslfp_pca$scores %>% as.data.frame %>% cbind(Name, .) %>% top_n(3, wt=Comp.2) %>%
+select(Name:Comp.6)
+womenslfp_pca$scores %>% as.data.frame %>% cbind(Name, .) %>% top_n(3, wt=desc(Comp.2)) %>%
+select(Name:Comp.6)
+
+womenslfp_pca$scores %>% as.data.frame %>% cbind(Name, .) %>% top_n(3, wt=Comp.3) %>%
+select(Name:Comp.6)
+womenslfp_pca$scores %>% as.data.frame %>% cbind(Name, .) %>% top_n(3, wt=desc(Comp.3)) %>%
+select(Name:Comp.6)
+
+womenslfp_pca$scores %>% as.data.frame %>% cbind(Name, .) %>% top_n(3, wt=Comp.4) %>%
+select(Name:Comp.6)
+womenslfp_pca$scores %>% as.data.frame %>% cbind(Name, .) %>% top_n(3, wt=desc(Comp.4)) %>%
+select(Name:Comp.6)
+
+womenslfpdf<-data.frame(Name=womenslfp, PC1=womenslfp_pca$scores[, 1],PC2=womenslfp_pca$scores[, 2])
+ggplot(womenslfpdf, aes(PC1, PC2)) + geom_point()
+
+library(factoextra)
+fviz_pca_biplot(womenslfp_pca) + coord_fixed()
 ```
 
-Discussions of PCA here. 
+Using PCA I chose to keep the first 4 PCs to create a cumulative proportion of variance that is larger than 80% (82%). All of the first four comparables seem to be related to the woman's labor force participation and the number of children the family has. By breaking down the PCA, it looks like scoring high on Comp 1 is a family where the woman is unemployed and there are multiple children in either age range. Scoring high on comp 2 are families where the woman is unemployed, but with a small number of children (1 or 2 older children). Comp 3 high scorers are employed women with little to no children, and comp 4 high scorers are a little different and this comparable seems to be related to families where the wife has low log wage and low children. Labor force participation is not part of high scoring on comparable 4. 
+
 
 ###  Linear Classifier
 
 ```{R}
-# linear classifier code here
+fit <- glm(lfp ~ k5 + k618 + age + lwg + inc, data=womenslfp, family="binomial")
+
+score <- predict(fit, type="response")
+
+class_diag(score,womenslfp$lfp,positive=1)
+
+
 ```
 
 ```{R}
-# cross-validation of linear classifier here
+k=10
+data<-womenslfp[sample(nrow(womenslfp)),] 
+folds<-cut(seq(1:nrow(womenslfp)),breaks=k,labels=F)
+diags<-NULL
+for(i in 1:k){
+train<-data[folds!=i,]
+test<-data[folds==i,]
+truth<-test$lfp 
+fit<-glm(lfp~ k5 + k618 + age + lwg + inc,data=train,family="binomial")
+probs<-predict(fit,newdata = test,type="response")
+diags<-rbind(diags,class_diag(probs,truth, positive=1))
+}
+summarize_all(diags,mean)
 ```
+I chose a logistic regression to predict a woman's labor force participation based on the number of children she has under 5, the number of children she has between 6 and 18, the log of her wage if she works, and the household income without the woman's. 
 
-Discussion here
 
 ### Non-Parametric Classifier
 
 ```{R}
 library(caret)
-# non-parametric classifier code here
+knn_fit <- knn3(factor(lfp==1,levels=c("TRUE","FALSE")) ~ k5 + k618 + age + lwg + inc, data=womenslfp, k=5)
+y_hat_knn <- predict(knn_fit,womenslfp)
+head(y_hat_knn)
+
+table(truth= factor(womenslfp$lfp==1, levels=c("TRUE","FALSE")),
+prediction= factor(y_hat_knn[,1]>.5, levels=c("TRUE","FALSE")))
+
+class_diag(y_hat_knn[,1], womenslfp$lfp, positive=1)
+
+
 ```
 
 ```{R}
-# cross-validation of np classifier here
+k=10 
+data<-womenslfp[sample(nrow(womenslfp)),] 
+folds<-cut(seq(1:nrow(womenslfp)),breaks=k,labels=F) 
+diags<-NULL
+for(i in 1:k){
+train<-data[folds!=i,]
+test<-data[folds==i,]
+truth<-test$lfp 
+fit<-knn3(lfp~ k5 + k618 + age + lwg + inc,data=train)
+probs<-predict(fit,newdata = test)[,2]
+diags<-rbind(diags,class_diag(probs,truth, positive=1))
+}
+summarize_all(diags,mean)
+
 ```
 
-Discussion
+This k-nearest-neighbors predictor creates a similar AUC to the linear prediction before about 0.7822. This is the highet result I've seen meaning this is likely a good predictor for a woman's labor force participation based on the number of children then have in different age ranges, log of their wage if they work, and the household income without the woman's income included. When performing a k-fold CV the AUC becomes way lower meaning this may not be a great fit. 
 
 
 ### Regression/Numeric Prediction
 
 ```{R}
-# regression model code here
+fit<-lm(lwg~.,data=womenslfp) 
+yhat<-predict(fit)
+
+mean((womenslfp$lwg-yhat)^2) 
 ```
 
 ```{R}
-# cross-validation of regression model here
+k=5 
+data<-womenslfp[sample(nrow(womenslfp)),] 
+folds<-cut(seq(1:nrow(womenslfp)),breaks=k,labels=F) 
+diags<-NULL
+for(i in 1:k){
+train<-data[folds!=i,]
+test<-data[folds==i,]
+fit<-lm(lwg~.,data=train)
+yhat<-predict(fit,newdata=test)
+diags<-mean((test$lwg-yhat)^2)
+}
+mean(diags) 
 ```
 
-Discussion
+I created a linear regression predictor of log wage of the woman of the household by using all of the other variables in my data set. The prediction error came out pretty small indicating that this could be a good regression fit. Performing the CV analysis on the regression creating a prediction error that was only a little bigger. I do not think there is an over fit error here.
+  
 
 ### Python 
 
 ```{R}
 library(reticulate)
+
+k5<-"children under the age of 5"
 ```
 
 ```{python}
-# python code here
+k618="and children between 6 and 18"
+
+print(r.k5,k618)
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+import pandas as pd
+
+df = sns.load_dataset('womenslfp')
+
+(df.filter(['k5', 'k618'])
+ .query('k5 == 3').head(3))
 ```
 
-Discussion
+I used the reticulate function to define the k5 and k618 variables in the data set to communicate between R and Python. I then uploaded my data set into python and used basic filtering in python to pull households that have 3 children under 5 from a filtered set with only the k5 and k618 variables.
 
 ### Concluding Remarks
 
-Include concluding remarks here, if any
+The women's labor force participation data set was much more interesting and fun to play with than my first project set. I enjoyed seeing the regression and predictions on the variables and the practical uses of the R functions we learned in the second half of the semester. 
 
 
 
